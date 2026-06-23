@@ -69,6 +69,22 @@ def _safe_float(val) -> float | None:
         return None
 
 
+def _normalize_products_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convierte las columnas numéricas a float64 (None → NaN tipado).
+
+    pd.DataFrame(lista_de_dicts) crea dtype=object cuando hay None en la columna.
+    Streamlit no puede aplicar correctamente el delta del data_editor sobre columnas
+    object con None: edited_raw devuelve el mismo None y la primera edición no persiste.
+    Tener float64 garantiza que Arrow serializa el tipo correctamente y el delta se aplica.
+    """
+    df = df.copy()
+    for col in ("cantidad", "precio_unitario", "subtotal"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
 def _apply_subtotal_rules(
     edited_raw: pd.DataFrame,
     base_df: pd.DataFrame,
@@ -326,9 +342,8 @@ if process_clicked:
     # Guardar productos como DataFrame UNA sola vez por factura.
     # invoice_version cambia → el data_editor recibe un key nuevo y limpia su delta.
     _productos = result.get("productos", [])
-    st.session_state["products_df"] = (
-        pd.DataFrame(_productos) if _productos else _EMPTY_PRODUCTS_DF.copy()
-    )
+    _raw_df = pd.DataFrame(_productos) if _productos else _EMPTY_PRODUCTS_DF.copy()
+    st.session_state["products_df"] = _normalize_products_df(_raw_df)
     st.session_state["invoice_version"] += 1
     st.session_state["edit_version"] = 0   # nueva factura → delta limpio
 
@@ -443,20 +458,22 @@ if st.session_state.result:
             key=editor_key,
         )
 
-        # Aplicar reglas de recalculación leyendo el delta de este rerun
+        # Aplicar reglas de recalculación leyendo el delta de este rerun.
+        # base_df es el snapshot que el editor tomó como punto de partida.
         edited_df, hubo_recalculo = _apply_subtotal_rules(
             edited_raw, st.session_state["products_df"], editor_key
         )
 
-        # Si algo cambió: actualizar products_df y resetear el key del editor
-        if not edited_raw.reset_index(drop=True).equals(
-            st.session_state["products_df"].reset_index(drop=True)
-        ):
-            st.session_state["products_df"] = edited_df.copy()
+        # Solo rotamos el key del editor cuando necesitamos escribir subtotales
+        # calculados de vuelta al widget. Para cualquier otro cambio (nuevas filas,
+        # descripciones, rellenar un solo campo numérico) dejamos el editor estable:
+        # su delta acumula todas las ediciones y edited_df siempre refleja el estado
+        # actual. Rotar el key cuando el cliente aún usa el key anterior descarta el
+        # delta en tránsito, causando el bug de "hay que dar Enter dos veces".
+        if hubo_recalculo:
+            st.session_state["products_df"] = _normalize_products_df(edited_df)
             st.session_state["edit_version"] += 1
-            if hubo_recalculo:
-                # Rerun inmediato para que la celda subtotal muestre el nuevo valor
-                st.rerun()
+            st.rerun()
 
         # Totales
         if not edited_df.empty and "subtotal" in edited_df.columns:
