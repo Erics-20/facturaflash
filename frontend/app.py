@@ -69,6 +69,22 @@ def _safe_float(val) -> float | None:
         return None
 
 
+def _normalize_products_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convierte las columnas numéricas a float64 (None → NaN tipado).
+
+    pd.DataFrame(lista_de_dicts) crea dtype=object cuando hay None en la columna.
+    Streamlit no puede aplicar correctamente el delta del data_editor sobre columnas
+    object con None: edited_raw devuelve el mismo None y la primera edición no persiste.
+    Tener float64 garantiza que Arrow serializa el tipo correctamente y el delta se aplica.
+    """
+    df = df.copy()
+    for col in ("cantidad", "precio_unitario", "subtotal"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
 def _apply_subtotal_rules(
     edited_raw: pd.DataFrame,
     base_df: pd.DataFrame,
@@ -326,9 +342,8 @@ if process_clicked:
     # Guardar productos como DataFrame UNA sola vez por factura.
     # invoice_version cambia → el data_editor recibe un key nuevo y limpia su delta.
     _productos = result.get("productos", [])
-    st.session_state["products_df"] = (
-        pd.DataFrame(_productos) if _productos else _EMPTY_PRODUCTS_DF.copy()
-    )
+    _raw_df = pd.DataFrame(_productos) if _productos else _EMPTY_PRODUCTS_DF.copy()
+    st.session_state["products_df"] = _normalize_products_df(_raw_df)
     st.session_state["invoice_version"] += 1
     st.session_state["edit_version"] = 0   # nueva factura → delta limpio
 
