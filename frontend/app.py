@@ -458,20 +458,22 @@ if st.session_state.result:
             key=editor_key,
         )
 
-        # Aplicar reglas de recalculación leyendo el delta de este rerun
+        # Aplicar reglas de recalculación leyendo el delta de este rerun.
+        # base_df es el snapshot que el editor tomó como punto de partida.
         edited_df, hubo_recalculo = _apply_subtotal_rules(
             edited_raw, st.session_state["products_df"], editor_key
         )
 
-        # Si algo cambió: actualizar products_df y resetear el key del editor
-        if not edited_raw.reset_index(drop=True).equals(
-            st.session_state["products_df"].reset_index(drop=True)
-        ):
-            st.session_state["products_df"] = edited_df.copy()
+        # Solo rotamos el key del editor cuando necesitamos escribir subtotales
+        # calculados de vuelta al widget. Para cualquier otro cambio (nuevas filas,
+        # descripciones, rellenar un solo campo numérico) dejamos el editor estable:
+        # su delta acumula todas las ediciones y edited_df siempre refleja el estado
+        # actual. Rotar el key cuando el cliente aún usa el key anterior descarta el
+        # delta en tránsito, causando el bug de "hay que dar Enter dos veces".
+        if hubo_recalculo:
+            st.session_state["products_df"] = _normalize_products_df(edited_df)
             st.session_state["edit_version"] += 1
-            if hubo_recalculo:
-                # Rerun inmediato para que la celda subtotal muestre el nuevo valor
-                st.rerun()
+            st.rerun()
 
         # Totales
         if not edited_df.empty and "subtotal" in edited_df.columns:
