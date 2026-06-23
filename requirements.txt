@@ -1,0 +1,25 @@
+# ── Web framework ────────────────────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ── IA: API de Anthropic (Claude) ────────────────────────────────────────────
+anthropic>=0.30.0
+
+# ── OCR ──────────────────────────────────────────────────────────────────────
+# Requiere Python 3.12 (PyTorch aún no soporta 3.13)
+# Instalar torch primero desde el índice CPU:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+easyocr>=1.7.0
+certifi>=2024.0.0           # fix SSL en Python 3.12 framework macOS
+
+# ── Visión por computadora e imagen ──────────────────────────────────────────
+# opencv-contrib-python incluye QRCodeDetector (usado por qr_reader.py)
+opencv-contrib-python==4.10.0.84
+Pillow>=10.3.0
+"numpy>=1.24.0,<2.0.0"     # PyTorch 2.2 requiere NumPy 1.x
+
+# ── Datos y exportación ──────────────────────────────────────────────────────
+pandas>=2.0.0
+openpyxl>=3.1.2
+
+# ── Variables de entorno en desarrollo local ─────────────────────────────────
+python-dotenv>=1.0.1

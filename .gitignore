@@ -1,0 +1,49 @@
+# Variables de entorno — NUNCA subir al repo
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Exportaciones de prueba
+*.xlsx
+*.csv
+!data/samples/*.csv   # ejemplos de referencia sí se incluyen
+
+# Modelos descargados por EasyOCR / PaddleOCR (pesados)
+~/.EasyOCR/
+~/.paddleocr/
+inference/
+
+# Entornos virtuales
+.venv/
+.venv312/
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
