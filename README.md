@@ -1,112 +1,135 @@
-# ⚡ FacturaFlash
+# FacturaFlash
 
-> **Digitaliza las facturas de compra de tu bodega en segundos** — sube una foto, la app lee el QR SUNAT, extrae los productos con OCR + IA y te entrega una tabla editable lista para exportar a Excel.
+> Digitalizamos las facturas de compra de bodegas y microempresas peruanas con una sola foto, eliminando el tipeo manual al sistema de la tienda.
 
 ---
 
-## Cómo correr en local
+## Enlaces importantes
+
+| | |
+|---|---|
+| 🔗 **Demo en vivo** | [facturaflash.streamlit.app](https://facturaflash-vsopyzcwbchtmntlpl6rhh.streamlit.app) |
+| 🎥 **Video demo** (2-3 min) | [youtube.com/watch?v=_6owS7uW8Jk](https://www.youtube.com/watch?v=_6owS7uW8Jk) |
+| 📊 **Pitch deck** | [docs/PitchDeck_FacturaFlash.pdf](docs/PitchDeck_FacturaFlash.pdf) |
+
+---
+
+## El problema
+
+Las bodegas y microempresas en Perú reciben decenas de facturas de compra cada semana y las registran a mano, tipeando producto por producto en su sistema o cuaderno. Es un proceso lento, repetitivo y propenso a errores que consume tiempo que el dueño podría dedicar al negocio.
+
+---
+
+## La solución
+
+FacturaFlash convierte una foto de la factura en una tabla digital lista para exportar, en segundos y sin tipeo.
+
+**Pipeline:**
+1. La app lee el **QR SUNAT** de la factura (si existe) para obtener cabecera exacta: RUC emisor, serie-número, fecha y total.
+2. **EasyOCR** extrae el texto completo de la imagen.
+3. **Claude AI** interpreta el texto OCR y estructura los productos en JSON.
+4. Si no hay QR legible, Claude infiere también la cabecera del texto.
+
+El resultado es una tabla editable de productos con subtotales, exportable a Excel o CSV con un clic.
+
+---
+
+## Cómo correrlo en local
+
+**Requisito:** Python 3.12. No usar 3.13 — PyTorch y EasyOCR aún no lo soportan.
 
 ```bash
-# 1. Clona el repo y entra al directorio
-git clone <repo-url>
+# 1. Clonar el repo
+git clone https://github.com/Erics-20/facturaflash.git
 cd facturaflash
 
-# 2. Crea el entorno virtual con Python 3.12
-#    (PyTorch/EasyOCR no soportan Python 3.13 aún)
+# 2. Crear entorno virtual con Python 3.12
 python3.12 -m venv .venv312
-source .venv312/bin/activate   # Windows: .venv312\Scripts\activate
+source .venv312/bin/activate      # Windows: .venv312\Scripts\activate
 
-# 3. Instala PyTorch CPU (paso separado — requiere su propio índice)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
-# 4. Instala el resto de dependencias
+# 3. Instalar dependencias (incluye torch CPU vía --extra-index-url)
 pip install -r requirements.txt
 
-# 5. Configura tu API key de Anthropic
+# 4. Configurar API key de Anthropic
 cp .env.example .env
-# Edita .env y reemplaza "tu_key_aqui" con tu clave real
+# Editar .env y reemplazar el valor de ANTHROPIC_API_KEY
 
-# 6. Lanza la app
+# 5. Lanzar la app
 streamlit run frontend/app.py
 ```
 
-La app abre en `http://localhost:8501`.  
-**No tienes API key aún?** Activa el toggle **Modo Demo** en la barra lateral — funciona sin imagen ni clave.
+La app abre en `http://localhost:8501`. Sin API key, activa el toggle **Modo Demo** en la barra lateral.
 
-> **Nota:** La primera ejecución descarga los modelos de EasyOCR (~100 MB). Las siguientes son rápidas porque el modelo queda cacheado en `~/.EasyOCR/`.
+> La primera ejecución descarga los modelos de EasyOCR (~100 MB), que quedan cacheados en `~/.EasyOCR/`.
 
-### Dependencias de sistema (Linux / Streamlit Cloud)
-
-`packages.txt` ya las declara para Streamlit Cloud. En Ubuntu/Debian local:
-
-```bash
-sudo apt-get install -y libzbar0 libgomp1
+**En Streamlit Cloud** la API key va en **Settings → Secrets**, no en `.env`:
+```toml
+ANTHROPIC_API_KEY = "sk-ant-..."
 ```
 
 ---
 
 ## Arquitectura
 
-```mermaid
-flowchart LR
-    U([Usuario]) -->|Sube foto/PDF| A[frontend/app.py\nStreamlit]
-
-    subgraph backend
-        A -->|PIL Image| QR[qr_reader.py\nOpenCV QRCodeDetector]
-        A -->|PIL Image| OCR[ocr.py\nEasyOCR]
-        OCR -->|texto crudo| EX[extractor.py\nAnthropic API]
-        EX -->|JSON cabecera + productos| A
-        A -->|DataFrame| XP[exporter.py\npandas + openpyxl]
-    end
-
-    QR -->|dict cabecera ó None| A
-    XP -->|bytes| U
-
-    subgraph ai
-        EX <-->|prompt| PR[prompts.py\nconstante editable]
-    end
+```
+Foto/imagen
+     │
+     ▼
+┌─────────────────────────────────────┐
+│         frontend/app.py             │
+│            (Streamlit)              │
+└──────┬──────────────────┬───────────┘
+       │                  │
+       ▼                  ▼
+┌─────────────┐   ┌──────────────┐
+│ qr_reader   │   │   ocr.py     │
+│  (OpenCV    │   │  (EasyOCR    │
+│  QR SUNAT)  │   │   español)   │
+└──────┬──────┘   └──────┬───────┘
+       │    cabecera      │ texto crudo
+       │    exacta o      │
+       │    None          ▼
+       │         ┌──────────────────┐
+       │         │  extractor.py    │
+       └────────►│  (Claude API)    │
+                 │  JSON productos  │
+                 └────────┬─────────┘
+                          │
+                          ▼
+                 ┌──────────────────┐
+                 │   Tabla editable │
+                 │  (st.data_editor)│
+                 └────────┬─────────┘
+                          │
+                          ▼
+                 ┌──────────────────┐
+                 │  exporter.py     │
+                 │  Excel / CSV     │
+                 └──────────────────┘
 ```
 
-### Flujo de datos
-
-| Paso | Módulo | Entrada | Salida |
-|------|--------|---------|--------|
-| 1 | `qr_reader.py` | Imagen PIL | Dict `{ruc, serie, fecha, total}` ó `None` si no hay QR |
-| 2 | `ocr.py` | Imagen PIL | Texto plano (líneas de la factura) |
-| 3 | `extractor.py` | Texto OCR + datos QR | JSON `{cabecera: {...}, productos: [...]}` |
-| 4 | `exporter.py` | DataFrame editado | Bytes `.xlsx` / string CSV |
-
-### Lógica de fusión QR + OCR
-
-```
-Si QR detectado:
-    cabecera ← datos del QR (exactos: RUC, serie, total, fecha)
-    productos ← Claude extrae del texto OCR
-Si NO hay QR:
-    cabecera + productos ← Claude infiere todo del texto OCR
-```
-
----
-
-## Estructura de carpetas
+### Estructura de carpetas
 
 ```
 facturaflash/
 ├── frontend/
-│   └── app.py              ← app Streamlit (orquesta UI + backend)
+│   └── app.py              ← UI Streamlit: orquesta todo el pipeline
 ├── backend/
-│   ├── qr_reader.py        ← lectura QR SUNAT (OpenCV multi-estrategia)
-│   ├── ocr.py              ← extracción de texto (EasyOCR español)
-│   ├── extractor.py        ← llamada a Claude, parseo JSON
-│   └── exporter.py         ← export a .xlsx y .csv
+│   ├── qr_reader.py        ← decodifica el QR SUNAT (OpenCV, multi-estrategia)
+│   ├── ocr.py              ← extrae texto de la imagen (EasyOCR, español)
+│   ├── extractor.py        ← llama a Claude y parsea la respuesta JSON
+│   └── exporter.py         ← genera el .xlsx y .csv descargables
 ├── ai/
-│   └── prompts.py          ← prompt de extracción (editable)
+│   └── prompts.py          ← prompts de extracción (editables sin tocar código)
 ├── data/
-│   └── samples/            ← pon aquí tus fotos de facturas de prueba
+│   └── samples/            ← fotos de facturas de prueba
+├── docs/
+│   └── PitchDeck_FacturaFlash.pdf
 ├── notebooks/
-│   └── exploracion.ipynb   ← prueba cada módulo por separado
-├── requirements.txt
+│   └── exploracion.ipynb   ← exploración y prueba de módulos individuales
+├── requirements.txt        ← dependencias Python (torch CPU vía extra-index-url)
 ├── packages.txt            ← dependencias del sistema para Streamlit Cloud
+├── .python-version         ← fija Python 3.12 en el deploy
 └── .env.example
 ```
 
@@ -114,38 +137,29 @@ facturaflash/
 
 ## Herramientas del curso usadas
 
-| Herramienta | Propósito | Archivo |
-|-------------|-----------|---------|
-| **EasyOCR** | Reconocimiento óptico de caracteres en español sobre la imagen de la factura | `backend/ocr.py` |
-| **API de Claude (Anthropic)** | Interpretar el texto OCR y estructurarlo como JSON de cabecera + productos | `backend/extractor.py`, `ai/prompts.py` |
+| Herramienta | Archivo | Por qué |
+|---|---|---|
+| **EasyOCR** | `backend/ocr.py` | OCR multilenguaje en Python puro, sin dependencias de servicios externos; modelo en español para facturas peruanas |
+| **API de Claude / Anthropic** | `backend/extractor.py`, `ai/prompts.py` | Extracción estructurada tipo Lectura 14 del curso: el prompt instruye a Claude a devolver JSON estricto con cabecera y lista de productos |
+| **Streamlit** | `frontend/app.py` | Permite construir un frontend web completo (file uploader, tabla editable, descarga) en Python puro, sin HTML/JS |
 
-### Otros componentes clave
-
-| Componente | Propósito | Archivo |
-|------------|-----------|---------|
-| `OpenCV QRCodeDetector` | Decodificación del QR SUNAT con múltiples estrategias de preprocesamiento | `backend/qr_reader.py` |
-| `Streamlit` | Interfaz web completa (upload, tabla editable, descarga) | `frontend/app.py` |
-| `pandas` + `openpyxl` | Exportación a Excel y CSV | `backend/exporter.py` |
+El flujo de extracción con Claude replica directamente el patrón de la Lectura 14: prompt con esquema JSON esperado → llamada a la API → parseo de la respuesta estructurada.
 
 ---
 
-## Despliegue en Streamlit Community Cloud
+## Nota sobre uso de agentes de IA
 
-1. Sube el repo a GitHub (sin `.env`).
-2. En Streamlit Cloud → **New app** → apunta a `frontend/app.py`.
-3. En **Secrets**, agrega:
-   ```toml
-   ANTHROPIC_API_KEY = "sk-ant-..."
-   ```
-4. `packages.txt` se procesa automáticamente.
-
-> **Importante:** Streamlit Cloud corre en Ubuntu con Python 3.12. El paso de PyTorch se
-> maneja vía `requirements.txt` — el índice CPU se configura con una línea
-> `--extra-index-url` o separando la instalación en el `packages.txt`.
+El proyecto fue construido con asistencia de **Claude Code** como co-founder técnico: arquitectura, debugging del pipeline OCR→Claude, diseño del flujo de `st.data_editor` con session_state y preparación del deploy. El diseño del producto, el problema a resolver y las decisiones de negocio son del autor.
 
 ---
 
 ## Autor
 
-Proyecto MVP — FacturaFlash  
-Licencia MIT
+**Eric Segura** — solo founder  
+Proyecto final del curso *Data Science con Python 2026-I*, Universidad del Pacífico.
+
+---
+
+## Licencia
+
+MIT — ver [LICENSE](LICENSE).
